@@ -1,0 +1,252 @@
+services:
+  web-console:
+    build:
+      context: .
+      dockerfile: apps/web-console/Dockerfile
+    ports:
+      - '8080:80'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+    restart: unless-stopped
+
+  # Chatwoot CE：POC 验证用，不参与生产拓扑。
+  # 本 profile 的服务依赖本地未提交的 spikes/chatwoot-poc/（env_file、build context、sql 挂载），
+  # 因此 --profile chatwoot 仅在本机可用；clone 后不带该目录，执行会因文件缺失报错。
+  # 版本锁定（digest 为构建时的上游值，升级需同步 ADR-002）：
+  #   chatwoot v4.20.1-ce
+  #     amd64 sha256:a195245e10aa77bd572415294a8f365ab247f0260415f48363c369c80a7cf321
+  #     arm64 sha256:5d2a0b0280fc376887df167eaed150d99d4a1c8a6c6158aa85a4b23a3ce31ef9
+  #   pgvector 0.8.7-pg16-bookworm
+  #     amd64 sha256:018b4a92e634c3a5715f613dd43497e3d8028ae051be7ba6fd127bcffb0e7957
+  #     arm64 sha256:d153dea9f9bb6ee63ec539d2febf8264848ba962808484054ea77bb32e5a3853
+  #   redis 7.4.12-alpine
+  #     amd64 sha256:e4ee3e03ce8f75471f40937a7c6b2b0e500390b6812fcdf5cb32c01295ded446
+  #     arm64 sha256:52d1ea8a654b10f06af3ecda4e9dbcd035c7868b5c49ee7975de917f81de13db
+  chatwoot-web:
+    profiles: ['chatwoot']
+    image: chatwoot/chatwoot:v4.20.1-ce
+    env_file: ./spikes/chatwoot-poc/chatwoot.env
+    entrypoint: docker/entrypoints/rails.sh
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    depends_on:
+      chatwoot-postgres:
+        condition: service_healthy
+      chatwoot-redis:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - chatwoot-storage:/app/storage
+    networks:
+      - chatwoot-net
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'ruby -rnet/http -e ''exit(Net::HTTP.get_response(URI("http://127.0.0.1:3000/health")).is_a?(Net::HTTPSuccess) ? 0 : 1)''',
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 2G
+    restart: unless-stopped
+
+  chatwoot-worker:
+    profiles: ['chatwoot']
+    image: chatwoot/chatwoot:v4.20.1-ce
+    env_file: ./spikes/chatwoot-poc/chatwoot.env
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    depends_on:
+      chatwoot-postgres:
+        condition: service_healthy
+      chatwoot-redis:
+        condition: service_healthy
+    volumes:
+      - chatwoot-storage:/app/storage
+    networks:
+      - chatwoot-net
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'bundle exec ruby -rsidekiq/api -e ''exit(Sidekiq::ProcessSet.new.any? ? 0 : 1)''',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1G
+    restart: unless-stopped
+
+  chatwoot-postgres:
+    profiles: ['chatwoot']
+    image: pgvector/pgvector:0.8.7-pg16-bookworm
+    env_file: ./spikes/chatwoot-poc/chatwoot.env
+    volumes:
+      - chatwoot-postgres-data:/var/lib/postgresql/data
+    networks:
+      - chatwoot-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+    restart: unless-stopped
+
+  chatwoot-redis:
+    profiles: ['chatwoot']
+    image: redis:7.4.12-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - chatwoot-redis-data:/data
+    networks:
+      - chatwoot-net
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    restart: unless-stopped
+
+  # 阶段 A 采集端点：只落盘、不解析。加入 chatwoot-net 以便 Chatwoot 用固定 IPv4 投递，
+  # 避免 host.docker.internal 解析出不可达的 IPv6（见 findings/delivery-identity.md）。
+  poc-capture:
+    profiles: ['chatwoot']
+    image: node:22-alpine
+    working_dir: /poc
+    command: ['node', 'scripts/capture.mjs']
+    volumes:
+      - ./spikes/chatwoot-poc:/poc
+    environment:
+      - CAPTURE_PORT=4010
+    ports:
+      - '127.0.0.1:4010:4010'
+    networks:
+      - chatwoot-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    restart: unless-stopped
+
+  # 阶段 B：scratch 库 + 最小闭环 harness。全部随卷销毁，不进入平台库。
+  poc-db:
+    profiles: ['chatwoot']
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=poc
+      - POSTGRES_PASSWORD=poc
+      - POSTGRES_DB=poc
+    volumes:
+      - ./spikes/chatwoot-poc/sql/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - poc-db-data:/var/lib/postgresql/data
+    networks:
+      - chatwoot-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U poc -d poc']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    restart: unless-stopped
+
+  poc-ingest:
+    profiles: ['chatwoot']
+    build:
+      context: ./spikes/chatwoot-poc
+    command: ['node', 'scripts/ingest.mjs']
+    environment:
+      - DATABASE_URL=postgres://poc:poc@poc-db:5432/poc
+      - INGEST_PORT=4020
+    volumes:
+      - ./spikes/chatwoot-poc/local:/poc/local
+    depends_on:
+      poc-db:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:4020:4020'
+    networks:
+      - chatwoot-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    restart: unless-stopped
+
+  poc-worker:
+    profiles: ['chatwoot']
+    build:
+      context: ./spikes/chatwoot-poc
+    command: ['node', 'scripts/outbox.mjs']
+    environment:
+      - DATABASE_URL=postgres://poc:poc@poc-db:5432/poc
+      - CHATWOOT_BASE_URL=http://chatwoot-web:3000
+    volumes:
+      - ./spikes/chatwoot-poc/local:/poc/local
+    depends_on:
+      poc-db:
+        condition: service_healthy
+    networks:
+      - chatwoot-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    restart: unless-stopped
+
+networks:
+  # Chatwoot 与其数据库/缓存独立组网；平台侧服务不得加入（事实源 §15.2）。
+  chatwoot-net:
+    name: chatwoot-net
+
+volumes:
+  chatwoot-storage:
+  chatwoot-postgres-data:
+  chatwoot-redis-data:
+  poc-db-data:

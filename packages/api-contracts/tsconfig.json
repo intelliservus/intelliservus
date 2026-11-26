@@ -1,0 +1,4 @@
+{
+  "extends": "@intelliservus/config/tsconfig/base",
+  "include": ["src"]
+}

@@ -1,0 +1,8 @@
+{
+  "extends": "@intelliservus/config/tsconfig/base",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["eslint.config.js"]
+}
