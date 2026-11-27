@@ -9,6 +9,14 @@ test-results/
 *.log
 .DS_Store
 
+# Python（saas-api）
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 # Chatwoot POC（一次性验证产物，含本地凭证；模板见 chatwoot.env.example）
 spikes/
 

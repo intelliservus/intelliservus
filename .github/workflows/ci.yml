@@ -45,3 +45,49 @@ jobs:
 
       - name: E2E
         run: pnpm --filter web-console e2e
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: platform
+          POSTGRES_DB: platform_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U platform -d platform_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://platform:platform@localhost:5432/platform_test
+      TEST_DATABASE_URL: postgres://platform:platform@localhost:5432/platform_test
+      APP_ENV: test
+    defaults:
+      run:
+        working-directory: apps/saas-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.17"
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Migrate test database
+        run: uv run python scripts/migrate.py
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Typecheck
+        run: uv run mypy
+
+      - name: Test
+        run: uv run pytest

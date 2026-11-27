@@ -5,6 +5,8 @@ services:
       dockerfile: apps/web-console/Dockerfile
     ports:
       - '8080:80'
+    networks:
+      - platform-net
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1/healthz']
       interval: 10s
@@ -17,6 +19,68 @@ services:
           cpus: '0.50'
           memory: 128M
     restart: unless-stopped
+
+  # 平台库：与 Chatwoot 库完全隔离（事实源 §15.2）。
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${PLATFORM_DB_USER:-platform}
+      - POSTGRES_PASSWORD=${PLATFORM_DB_PASSWORD:-platform}
+      - POSTGRES_DB=${PLATFORM_DB_NAME:-platform}
+    volumes:
+      - platform-postgres-data:/var/lib/postgresql/data
+    ports:
+      - '127.0.0.1:5433:5432'
+    networks:
+      - platform-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${PLATFORM_DB_USER:-platform} -d ${PLATFORM_DB_NAME:-platform}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+    restart: unless-stopped
+
+  saas-api:
+    build:
+      context: .
+      dockerfile: apps/saas-api/Dockerfile
+    environment:
+      - APP_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgres://${PLATFORM_DB_USER:-platform}:${PLATFORM_DB_PASSWORD:-platform}@postgres:5432/${PLATFORM_DB_NAME:-platform}
+      - JWT_SECRET=${JWT_SECRET:-local-development-jwt-secret-change-me-32chars}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8080}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:3001:3000'
+    networks:
+      - platform-net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/api/v1/healthz')
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 512M
+    restart: unless-stopped
+
 
   # Chatwoot CE：POC 验证用，不参与生产拓扑。
   # 本 profile 的服务依赖本地未提交的 spikes/chatwoot-poc/（env_file、build context、sql 挂载），
@@ -169,20 +233,22 @@ services:
     restart: unless-stopped
 
   # 阶段 B：scratch 库 + 最小闭环 harness。全部随卷销毁，不进入平台库。
+  # 凭证从仓库根 .env 注入（Compose 自动加载，已被 .gitignore 忽略），模板见 .env.example。
+  # 未设置 POC_DB_PASSWORD 时 postgres 镜像拒绝初始化，不会以空口令启动。
   poc-db:
     profiles: ['chatwoot']
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=poc
-      - POSTGRES_PASSWORD=poc
-      - POSTGRES_DB=poc
+      POSTGRES_USER: ${POC_DB_USER:-poc}
+      POSTGRES_PASSWORD: ${POC_DB_PASSWORD:-}
+      POSTGRES_DB: ${POC_DB_NAME:-poc}
     volumes:
       - ./spikes/chatwoot-poc/sql/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
       - poc-db-data:/var/lib/postgresql/data
     networks:
       - chatwoot-net
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U poc -d poc']
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -200,7 +266,7 @@ services:
       context: ./spikes/chatwoot-poc
     command: ['node', 'scripts/ingest.mjs']
     environment:
-      - DATABASE_URL=postgres://poc:poc@poc-db:5432/poc
+      - DATABASE_URL=postgres://${POC_DB_USER:-poc}:${POC_DB_PASSWORD:-}@poc-db:5432/${POC_DB_NAME:-poc}
       - INGEST_PORT=4020
     volumes:
       - ./spikes/chatwoot-poc/local:/poc/local
@@ -224,7 +290,7 @@ services:
       context: ./spikes/chatwoot-poc
     command: ['node', 'scripts/outbox.mjs']
     environment:
-      - DATABASE_URL=postgres://poc:poc@poc-db:5432/poc
+      - DATABASE_URL=postgres://${POC_DB_USER:-poc}:${POC_DB_PASSWORD:-}@poc-db:5432/${POC_DB_NAME:-poc}
       - CHATWOOT_BASE_URL=http://chatwoot-web:3000
     volumes:
       - ./spikes/chatwoot-poc/local:/poc/local
@@ -244,9 +310,13 @@ networks:
   # Chatwoot 与其数据库/缓存独立组网；平台侧服务不得加入（事实源 §15.2）。
   chatwoot-net:
     name: chatwoot-net
+  # 平台网络：web-console / saas-api / 平台库。
+  platform-net:
+    name: platform-net
 
 volumes:
   chatwoot-storage:
   chatwoot-postgres-data:
   chatwoot-redis-data:
   poc-db-data:
+  platform-postgres-data:

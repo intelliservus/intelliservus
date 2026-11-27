@@ -18,10 +18,10 @@
 | 层面 | 基线 |
 |---|---|
 | Node / 包管理 | Node 22 LTS + pnpm（锁定 lockfile） |
-| 后端 | NestJS 11，模块化单体，禁止跨模块直接写表 |
+| 后端 | Python 3.12 + FastAPI，模块化单体，禁止跨模块直接写表（ADR-014） |
 | 前端 | React 19 + TS 5 + Vite + React Router + TanStack Query |
 | 前端 UI | Tailwind CSS v4 + shadcn/ui（Radix），不引入重型 UI 框架 |
-| Python | 3.12 + uv（Runtime 锁定依赖哈希） |
+| Python | 3.12 + uv（控制面与 Runtime 锁定依赖哈希） |
 | Agent | LangGraph，状态可持久化、可取消 |
 | 数据库 | PostgreSQL 16 + pgvector 0.8，平台库与 Chatwoot 库分离 |
 | 队列 | PostgreSQL outbox 为事实源 + Redis 通知 |
@@ -33,7 +33,7 @@
 ```text
 apps/
   web-console/      React 管理控制台（静态产物 + nginx）
-  saas-api/         NestJS 控制平面 + Ingress
+  saas-api/         FastAPI 控制平面 + Ingress
 packages/
   api-contracts/    OpenAPI 生成的 TS 类型
   config/           共享 tsconfig / ESLint
@@ -67,6 +67,8 @@ pnpm install                 # 安装依赖（锁 lockfile）
 pnpm dev                     # 启动开发环境
 pnpm test                    # 单元 / 集成测试
 pnpm lint                    # lint + typecheck
+uv sync                      # 安装 Python 依赖（锁 lockfile）
+uv run python scripts/migrate.py   # 执行平台库迁移
 uv run pytest                # Python 侧测试
 docker compose up -d         # 起本地全栈
 openspec list                # 查看进行中的 change
