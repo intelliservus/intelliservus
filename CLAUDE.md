@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`intelliservus` — a multi-tenant AI customer-service SaaS. This monorepo currently contains only the **platform admin console** (`apps/web-console`) plus shared packages; the backend services (`saas-api`, runtime, workers) described in the specs are planned but not yet in `apps/`.
+`intelliservus` — a multi-tenant AI customer-service SaaS. This monorepo contains the **platform admin console** (`apps/web-console`), the **control plane API** (`apps/saas-api`, Python 3.12 + FastAPI) plus shared packages; the data-plane services (runtime, workers) described in the specs are planned but not yet in `apps/`.
 
 The authoritative specification is `docs/项目开发文档.md` (**事实源** — when anything conflicts, it wins). `openspec/project.md` is a short always-loaded context summary; `docs/adr/` holds decision records. All docs are in Chinese; keep new specs, ADRs and code comments in the same register.
 
@@ -31,10 +31,23 @@ pnpm --filter web-console e2e                              # Playwright; builds 
 pnpm --filter @intelliservus/api-contracts generate        # regenerate src/schema.d.ts
 ```
 
+Backend API (`apps/saas-api`, Python 3.12 + uv):
+
+```bash
+cd apps/saas-api
+uv sync                                    # install deps (lockfile)
+uv run python scripts/migrate.py           # apply SQL migrations (needs DATABASE_URL)
+uv run pytest                              # tests (needs TEST_DATABASE_URL)
+uv run ruff check .                        # lint
+uv run mypy                                # typecheck
+uv run uvicorn saas_api.main:app --reload  # dev server on :3000
+```
+
 ## Architecture
 
 ```
 apps/web-console/        React 19 + Vite 7 SPA, deployed as static files behind nginx
+apps/saas-api/           Python 3.12 + FastAPI control plane; psycopg 3 + pure-SQL migrations
 packages/api-contracts/  openapi.yaml → generated TS types (schema.d.ts)
 packages/config/         shared tsconfig.base / tsconfig.react and ESLint config
 openspec/                change proposals + capability specs (see below)
@@ -50,6 +63,14 @@ openspec/                change proposals + capability specs (see below)
 
 Adding a console module touches two places that are not derived from each other: register it in `app/modules.ts` (routes + permission) and add it to `navItems` in `app/layout.tsx`. The `permission` string must match a permission emitted by the backend `auth/me` response.
 
+`saas-api` layering (`saas_api` → `apps/saas-api/src`):
+
+- `app.py` / `main.py` — app factory (settings, pool, ASGI middleware, routers) and uvicorn entrypoint.
+- `common/` — config validation, envelope/error codes, JSON logging, request context, FastAPI dependencies.
+- `database/` — psycopg 3 pool, `tenant_context` (transaction-scoped `SET LOCAL ROLE saas_app`), repository base class.
+- `modules/<domain>/` — `auth/`, `iam/`, `tenant/`, `audit/`, `health/`. Repositories receive the transaction handle; **no cross-module direct table writes**.
+- `migrations/` — pure SQL (`NNNN-<domain>-<desc>.sql`); `scripts/migrate.py` applies them and records `schema_migrations`.
+
 ### API layer
 
 - Base URL `/api/v1`; nginx proxies it to `saas-api` in Docker. Responses use a `{ data, meta }` envelope — the client unwraps `data` automatically.
@@ -63,11 +84,13 @@ Adding a console module touches two places that are not derived from each other:
 - Access token lives **only in memory** (`features/auth/token-store.ts`); refresh token is an httpOnly `SameSite=Strict` cookie. Persisting tokens to storage is a spec violation and is asserted against in E2E.
 - Startup flow: `POST /auth/refresh` → `GET /auth/me`. A 401 triggers `createRefreshQueue` (single-flight: concurrent 401s share one refresh); auth endpoints pass `skipAuthRetry` to avoid recursive refresh.
 - `RequirePermission` and hidden nav entries are UX only — authorization is enforced by the backend.
+- Backend (`modules/auth/`): refresh tokens are SHA-256 hashed in `iam.refresh_tokens` and rotated on every refresh; reuse revokes the whole family and writes a deny audit. Password hashes are Argon2id (`argon2-cffi`); access tokens are HS256 with a 15-minute TTL.
 
 ### Testing
 
-- Vitest + jsdom, tests colocated as `*.test.ts(x)`; MSW for HTTP. Playwright specs live in `apps/web-console/e2e/` and mock `/api/v1/**` with `page.route`.
-- CI (`.github/workflows/ci.yml`) order: install → regenerate contracts → diff check → lint → typecheck → unit → Playwright.
+- `web-console`: Vitest + jsdom, tests colocated as `*.test.ts(x)`; MSW for HTTP. Playwright specs live in `apps/web-console/e2e/` and mock `/api/v1/**` with `page.route`.
+- `saas-api`: pytest + pytest-asyncio + httpx ASGI transport. Integration tests need a real PostgreSQL via `TEST_DATABASE_URL` and skip when it is unset.
+- CI has two jobs: Node `verify` (install → regenerate contracts → diff check → lint → typecheck → vitest → Playwright) and Python `backend` (`uv sync` → migrate → ruff → mypy → pytest) against a Postgres service.
 
 ## Deployment notes
 
