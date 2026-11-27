@@ -14,7 +14,7 @@
 | 5 | 自身消息如何识别 | `sender.type == "agent_bot"`；私有备注也会回流 | `0004` 过滤链；`0014` A1 草稿必须按 `private` 过滤 | `findings/sender-matrix.md` |
 | 6 | 人工接管如何判定 | 无专门事件；`meta.assignee.type == "user"` 或人工出站消息；bot 绑定会让 assignee 变成 bot | `0015` 接管状态机；不能用「assignee 非空」 | `findings/handoff-events.md` |
 | 7 | 上游有无发送门禁 | 无；接管后仍可发送 | 发送前二次校验不可省（§7.5）；`0016` 并发测试 | `findings/handoff-events.md` |
-| 8 | 队列方案 | outbox + `SKIP LOCKED`；静默 2 秒合并；5 次退避后死信 | `0003` 建表；`0004` worker；Redis 唤醒可选 | ADR-004 |
+| 8 | 队列方案 | outbox + `SKIP LOCKED`；静默 2 秒合并；5 次退避后死信 | `0004` 建表（`integration.outbox_events`）与 worker；Redis 唤醒可选 | ADR-004 |
 | 9 | CE 能否自动开通 Account | 能；Platform API 三步（Account / User / AccountUser） | `0003` 租户创建编排；PlatformApp token 进密钥管理 | `findings/account-provisioning.md`、ADR-012 |
 | 10 | 出站到内网是否可行 | 默认不可行（SafeFetch）；需公网地址或显式开关 | `0013` Outbound Security 的部署前置；ADR-001 约束 | `findings/delivery-identity.md` |
 | 11 | payload 规模 | 事件内嵌完整会话历史，随会话增长 | `0004` 只取顶层字段，禁止整包落库当消息 | `findings/README.md` |

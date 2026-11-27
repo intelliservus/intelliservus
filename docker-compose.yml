@@ -57,6 +57,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-local-development-jwt-secret-change-me-32chars}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8080}
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - CHATWOOT_WEBHOOK_SECRETS=${CHATWOOT_WEBHOOK_SECRETS:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,9 +82,39 @@ services:
           memory: 512M
     restart: unless-stopped
 
+  # 数据面 Worker：与 saas-api 同镜像，不监听端口，只消费 outbox。
+  saas-worker:
+    build:
+      context: .
+      dockerfile: apps/saas-api/Dockerfile
+    command: ['python', '-m', 'saas_api.worker']
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgres://${PLATFORM_DB_USER:-platform}:${PLATFORM_DB_PASSWORD:-platform}@postgres:5432/${PLATFORM_DB_NAME:-platform}
+      - JWT_SECRET=${JWT_SECRET:-local-development-jwt-secret-change-me-32chars}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8080}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - platform-net
+    healthcheck:
+      test: ['CMD', 'python', '-m', 'saas_api.worker', '--check']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    restart: unless-stopped
+
 
   # Chatwoot CE：POC 验证用，不参与生产拓扑。
-  # 本 profile 的服务依赖本地未提交的 spikes/chatwoot-poc/（env_file、build context、sql 挂载），
+  # 本 profile 的服务依赖本地未提交的 spikes/chatwoot-poc.archive/（env_file、build context、sql 挂载），
   # 因此 --profile chatwoot 仅在本机可用；clone 后不带该目录，执行会因文件缺失报错。
   # 版本锁定（digest 为构建时的上游值，升级需同步 ADR-002）：
   #   chatwoot v4.20.1-ce
@@ -98,7 +129,7 @@ services:
   chatwoot-web:
     profiles: ['chatwoot']
     image: chatwoot/chatwoot:v4.20.1-ce
-    env_file: ./spikes/chatwoot-poc/chatwoot.env
+    env_file: ./spikes/chatwoot-poc.archive/chatwoot.env
     entrypoint: docker/entrypoints/rails.sh
     command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
     environment:
@@ -136,7 +167,7 @@ services:
   chatwoot-worker:
     profiles: ['chatwoot']
     image: chatwoot/chatwoot:v4.20.1-ce
-    env_file: ./spikes/chatwoot-poc/chatwoot.env
+    env_file: ./spikes/chatwoot-poc.archive/chatwoot.env
     command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
     environment:
       - NODE_ENV=production
@@ -171,7 +202,7 @@ services:
   chatwoot-postgres:
     profiles: ['chatwoot']
     image: pgvector/pgvector:0.8.7-pg16-bookworm
-    env_file: ./spikes/chatwoot-poc/chatwoot.env
+    env_file: ./spikes/chatwoot-poc.archive/chatwoot.env
     volumes:
       - chatwoot-postgres-data:/var/lib/postgresql/data
     networks:
@@ -218,7 +249,7 @@ services:
     working_dir: /poc
     command: ['node', 'scripts/capture.mjs']
     volumes:
-      - ./spikes/chatwoot-poc:/poc
+      - ./spikes/chatwoot-poc.archive:/poc
     environment:
       - CAPTURE_PORT=4010
     ports:
@@ -243,7 +274,7 @@ services:
       POSTGRES_PASSWORD: ${POC_DB_PASSWORD:-}
       POSTGRES_DB: ${POC_DB_NAME:-poc}
     volumes:
-      - ./spikes/chatwoot-poc/sql/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./spikes/chatwoot-poc.archive/sql/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
       - poc-db-data:/var/lib/postgresql/data
     networks:
       - chatwoot-net
@@ -263,13 +294,13 @@ services:
   poc-ingest:
     profiles: ['chatwoot']
     build:
-      context: ./spikes/chatwoot-poc
+      context: ./spikes/chatwoot-poc.archive
     command: ['node', 'scripts/ingest.mjs']
     environment:
       - DATABASE_URL=postgres://${POC_DB_USER:-poc}:${POC_DB_PASSWORD:-}@poc-db:5432/${POC_DB_NAME:-poc}
       - INGEST_PORT=4020
     volumes:
-      - ./spikes/chatwoot-poc/local:/poc/local
+      - ./spikes/chatwoot-poc.archive/local:/poc/local
     depends_on:
       poc-db:
         condition: service_healthy
@@ -287,13 +318,13 @@ services:
   poc-worker:
     profiles: ['chatwoot']
     build:
-      context: ./spikes/chatwoot-poc
+      context: ./spikes/chatwoot-poc.archive
     command: ['node', 'scripts/outbox.mjs']
     environment:
       - DATABASE_URL=postgres://${POC_DB_USER:-poc}:${POC_DB_PASSWORD:-}@poc-db:5432/${POC_DB_NAME:-poc}
       - CHATWOOT_BASE_URL=http://chatwoot-web:3000
     volumes:
-      - ./spikes/chatwoot-poc/local:/poc/local
+      - ./spikes/chatwoot-poc.archive/local:/poc/local
     depends_on:
       poc-db:
         condition: service_healthy

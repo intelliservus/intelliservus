@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import os
 import re
+import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from httpx import Response
 from psycopg.rows import dict_row
 
 from saas_api.modules.iam.permissions import AGENT_PERMISSIONS, TENANT_ADMIN_PERMISSIONS
+from saas_api.modules.support_adapter.events import project_event
+from saas_api.modules.support_adapter.repositories import (
+    OutboxEvent,
+    OutboxRepository,
+    SupportEventsRepository,
+    WebhookDeliveriesRepository,
+)
 
 DSN = os.environ.get("TEST_DATABASE_URL", "")
 ORIGIN = "http://localhost:8080"
@@ -17,7 +26,9 @@ PASSWORD = "correct-horse-battery"
 Call = Callable[..., Awaitable[Response]]
 
 TRUNCATE_SQL = """
-TRUNCATE audit.audit_logs, iam.refresh_tokens, iam.memberships, iam.role_permissions,
+TRUNCATE integration.message_processing_records, support.messages, support.conversations,
+         support.support_events, integration.outbox_events, integration.webhook_deliveries,
+         audit.audit_logs, iam.refresh_tokens, iam.memberships, iam.role_permissions,
          iam.roles, tenant.workspaces, tenant.tenants, iam.users
 RESTART IDENTITY CASCADE
 """
@@ -179,3 +190,69 @@ def token_of(response: Any) -> str:
 
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def vendor_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "event": "message_created",
+        "id": 12,
+        "content": "我想查询订单",
+        "message_type": "incoming",
+        "private": False,
+        "created_at": "2026-11-25T12:30:39.019Z",
+        "account": {"id": 1},
+        "inbox": {"id": 1},
+        "conversation": {"id": 5},
+        "sender": {"id": 9, "type": "contact"},
+    }
+    payload.update(overrides)
+    return payload
+
+
+async def seed_support_event(
+    pool: Any,
+    payload: dict[str, Any],
+    *,
+    trace_id: str = "trace-1",
+    provider_created_at: datetime | None = None,
+) -> OutboxEvent:
+    """按接收事务的顺序写入投递、事件与 outbox，返回可被 Worker 领取的事件。"""
+    async with pool.connection() as conn:
+        async with conn.transaction():
+            delivery_id = await WebhookDeliveriesRepository(conn).insert(
+                provider="chatwoot",
+                account_id=str((payload.get("account") or {}).get("id")),
+                delivery_key=f"delivery-{uuid.uuid4()}",
+                event_type=str(payload.get("event")),
+                degraded=False,
+            )
+            assert delivery_id is not None
+            support_event_id = await SupportEventsRepository(conn).insert(
+                delivery_id=delivery_id,
+                event_type=str(payload.get("event")),
+                payload=project_event(payload),
+                status="received",
+                degraded=False,
+                trace_id=trace_id,
+                provider_created_at=provider_created_at,
+            )
+            outbox_id = await OutboxRepository(conn).enqueue(
+                event_type="support.event.received",
+                payload={
+                    "support_event_id": support_event_id,
+                    "delivery_id": delivery_id,
+                },
+                occurred_at=datetime.now(UTC),
+                trace_id=trace_id,
+            )
+    return OutboxEvent(
+        id=outbox_id,
+        event_type="support.event.received",
+        schema_version=1,
+        tenant_id=None,
+        workspace_id=None,
+        trace_id=trace_id,
+        attempt=1,
+        retry_of=None,
+        payload={"support_event_id": support_event_id, "delivery_id": delivery_id},
+    )

@@ -70,6 +70,7 @@ pnpm lint                    # lint + typecheck
 uv sync                      # 安装 Python 依赖（锁 lockfile）
 uv run python scripts/migrate.py   # 执行平台库迁移
 uv run pytest                # Python 侧测试
+uv run python -m saas_api.worker   # 启动 outbox Worker（不监听端口）
 docker compose up -d         # 起本地全栈
 openspec list                # 查看进行中的 change
 openspec list --specs        # 查看现行能力规格

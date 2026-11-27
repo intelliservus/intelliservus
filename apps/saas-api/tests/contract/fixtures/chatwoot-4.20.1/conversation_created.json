@@ -1,0 +1,67 @@
+{
+  "event": "conversation_created",
+  "chatwoot_version": "v4.20.1-ce",
+  "captured_at": "2026-11-25T12-24-31-512Z-002",
+  "source": "spikes/chatwoot-poc/findings/samples/conversation_created.json",
+  "derived": false,
+  "payload": {
+    "additional_attributes": {},
+    "anonymous_caller": false,
+    "can_reply": true,
+    "channel": "Channel::Api",
+    "contact_inbox": {
+      "id": 5,
+      "contact_id": 5,
+      "inbox_id": 1,
+      "source_id": "0ceaf244-b619-4201-991a-8bf9276de89a",
+      "created_at": "2026-11-25T12:24:31.419Z",
+      "updated_at": "2026-11-25T12:24:31.419Z",
+      "hmac_verified": false,
+      "pubsub_token": "«redacted»"
+    },
+    "id": 5,
+    "inbox_id": 1,
+    "messages": [],
+    "labels": [],
+    "meta": {
+      "sender": {
+        "additional_attributes": {
+          "company_name": "Poc"
+        },
+        "custom_attributes": {},
+        "email": "«redacted»",
+        "id": 5,
+        "identifier": null,
+        "name": "«redacted»",
+        "phone_number": null,
+        "thumbnail": "«redacted»",
+        "blocked": false,
+        "contact_type": "lead",
+        "type": "contact",
+        "company_id": 1
+      },
+      "assignee": null,
+      "assignee_type": null,
+      "team": null,
+      "hmac_verified": false
+    },
+    "status": "open",
+    "custom_attributes": {},
+    "snoozed_until": null,
+    "unread_count": 0,
+    "first_reply_created_at": null,
+    "priority": null,
+    "waiting_since": 1795609471,
+    "agent_last_seen_at": 0,
+    "contact_last_seen_at": 0,
+    "last_activity_at": 1795609471,
+    "timestamp": 1795609471,
+    "created_at": 1795609471,
+    "updated_at": 1795609471.470846,
+    "account": {
+      "id": 1,
+      "name": "POC Workspace"
+    },
+    "event": "conversation_created"
+  }
+}

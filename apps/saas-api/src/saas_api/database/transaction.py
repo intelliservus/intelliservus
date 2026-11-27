@@ -9,6 +9,22 @@ from psycopg_pool import AsyncConnectionPool
 
 
 @asynccontextmanager
+async def ingress_context(
+    pool: AsyncConnectionPool,
+) -> AsyncIterator[AsyncConnection[Any]]:
+    """公开 Ingress 的事务上下文：最小权限角色 + 无租户作用域。
+
+    `app.scope = 'ingress'` 不匹配任何租户策略，配合 `saas_ingress` 只能追加
+    接入侧表，保证端点被攻破时读不到业务数据（design D4）。
+    """
+    async with pool.connection() as conn:
+        async with conn.transaction():
+            await conn.execute("SET LOCAL ROLE saas_ingress")
+            await conn.execute("SELECT set_config('app.scope', 'ingress', true)")
+            yield conn
+
+
+@asynccontextmanager
 async def tenant_context(
     pool: AsyncConnectionPool,
     tenant_id: str | None,

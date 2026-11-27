@@ -18,6 +18,7 @@ from .common.middleware import RequestContextMiddleware
 from .database.pool import create_pool
 from .modules.auth.router import router as auth_router
 from .modules.health.router import router as health_router
+from .modules.ingress.router import router as ingress_router
 from .modules.tenant.router import router as tenant_router
 
 
@@ -50,6 +51,7 @@ def create_app(
     application.add_middleware(RequestContextMiddleware, logger=logger)
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(auth_router, prefix="/api/v1")
+    application.include_router(ingress_router, prefix="/api/v1")
     application.include_router(tenant_router, prefix="/api/v1")
 
     @application.exception_handler(AppError)

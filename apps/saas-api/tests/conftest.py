@@ -18,18 +18,20 @@ from support import DSN, PASSWORD, Call, truncate
 ORIGIN = "http://localhost:8080"
 
 
-def _make_call(app: FastAPI) -> Call:
+def _make_call(app: FastAPI, *, raise_app_exceptions: bool = True) -> Call:
     async def _call(
         method: str,
         path: str,
         *,
         headers: dict[str, str] | None = None,
         json: Any = None,
+        content: bytes | None = None,
     ) -> Response:
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions),
+            base_url="http://test",
         ) as client:
-            return await client.request(method, path, headers=headers, json=json)
+            return await client.request(method, path, headers=headers, json=json, content=content)
 
     return _call
 
@@ -42,6 +44,7 @@ def settings() -> Settings:
         jwt_secret="a" * 32,
         allowed_origins=[ORIGIN],
         cookie_secure=False,
+        webhook_secrets=["test-webhook-secret"],
     )
 
 
@@ -91,6 +94,22 @@ async def raw_pool() -> AsyncIterator[AsyncConnectionPool]:
         open=False,
         min_size=1,
         max_size=10,
+    )
+    await pool.open()
+    yield pool
+    await pool.close()
+
+
+@pytest_asyncio.fixture
+async def ingress_pool() -> AsyncIterator[AsyncConnectionPool]:
+    if not DSN:
+        pytest.skip("TEST_DATABASE_URL not set")
+    pool = AsyncConnectionPool(
+        DSN,
+        kwargs={"options": "-c role=saas_ingress"},
+        open=False,
+        min_size=1,
+        max_size=4,
     )
     await pool.open()
     yield pool

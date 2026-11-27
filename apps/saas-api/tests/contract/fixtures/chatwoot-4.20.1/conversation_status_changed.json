@@ -1,0 +1,117 @@
+{
+  "event": "conversation_status_changed",
+  "chatwoot_version": "v4.20.1-ce",
+  "captured_at": "2026-11-25T12-30-41-264Z-018",
+  "source": "spikes/chatwoot-poc/findings/samples/conversation_status_changed.json",
+  "derived": false,
+  "payload": {
+    "additional_attributes": {},
+    "anonymous_caller": false,
+    "can_reply": true,
+    "channel": "Channel::Api",
+    "contact_inbox": {
+      "id": 5,
+      "contact_id": 5,
+      "inbox_id": 1,
+      "source_id": "0ceaf244-b619-4201-991a-8bf9276de89a",
+      "created_at": "2026-11-25T12:24:31.419Z",
+      "updated_at": "2026-11-25T12:24:31.419Z",
+      "hmac_verified": false,
+      "pubsub_token": "«redacted»"
+    },
+    "id": 5,
+    "inbox_id": 1,
+    "messages": [
+      {
+        "id": 12,
+        "content": "«redacted»",
+        "account_id": 1,
+        "inbox_id": 1,
+        "conversation_id": 5,
+        "message_type": 1,
+        "created_at": 1795609839,
+        "updated_at": "2026-11-25T12:30:39.066Z",
+        "private": false,
+        "status": "delivered",
+        "source_id": null,
+        "content_type": "text",
+        "content_attributes": {},
+        "sender_type": "User",
+        "sender_id": 1,
+        "external_source_ids": {},
+        "additional_attributes": {},
+        "processed_message_content": "«redacted»",
+        "sentiment": {},
+        "conversation": {
+          "assignee_id": 1,
+          "unread_count": 1,
+          "last_activity_at": 1795609839,
+          "contact_inbox": {
+            "source_id": "0ceaf244-b619-4201-991a-8bf9276de89a"
+          }
+        },
+        "sender": {
+          "id": 1,
+          "name": "POC Admin",
+          "available_name": "POC Admin",
+          "avatar_url": "",
+          "type": "user",
+          "availability_status": null,
+          "thumbnail": "«redacted»"
+        }
+      }
+    ],
+    "labels": [],
+    "meta": {
+      "sender": {
+        "additional_attributes": {
+          "company_name": "Poc",
+          "avatar_url_hash": "63cd9724f8dd613be43af60c1362538083bb21965d514180360d97d7a05901f6",
+          "last_avatar_sync_at": "2026-11-25T12:25:06Z"
+        },
+        "custom_attributes": {},
+        "email": "«redacted»",
+        "id": 5,
+        "identifier": null,
+        "name": "«redacted»",
+        "phone_number": null,
+        "thumbnail": "«redacted»",
+        "blocked": false,
+        "contact_type": "lead",
+        "type": "contact",
+        "company_id": 1
+      },
+      "assignee": {
+        "id": 1,
+        "name": "POC Admin",
+        "available_name": "POC Admin",
+        "avatar_url": "",
+        "type": "user",
+        "availability_status": null,
+        "thumbnail": "«redacted»"
+      },
+      "assignee_type": "User",
+      "team": null,
+      "hmac_verified": false
+    },
+    "status": "resolved",
+    "custom_attributes": {},
+    "snoozed_until": null,
+    "unread_count": 1,
+    "first_reply_created_at": "2026-11-25T12:29:41.245Z",
+    "priority": null,
+    "waiting_since": 0,
+    "agent_last_seen_at": 0,
+    "contact_last_seen_at": 0,
+    "last_activity_at": 1795609839,
+    "timestamp": 1795609839,
+    "created_at": 1795609471,
+    "updated_at": 1795609841.1581042,
+    "account": {
+      "id": 1,
+      "name": "POC Workspace"
+    },
+    "event": "conversation_status_changed",
+    "changed_attributes": null
+  }
+}

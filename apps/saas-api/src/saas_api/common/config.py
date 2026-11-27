@@ -24,6 +24,9 @@ class Settings(BaseModel):
     jwt_secret: str
     allowed_origins: list[str]
     cookie_secure: bool = True
+    webhook_secrets: list[str] = []
+    webhook_max_body_bytes: int = 1_048_576
+    webhook_timestamp_tolerance_seconds: int = 300
 
     @field_validator("jwt_secret")
     @classmethod
@@ -59,6 +62,14 @@ def load_config(env: Mapping[str, str] | None = None) -> Settings:
     if not origins:
         problems.append("ALLOWED_ORIGINS is required")
 
+    raw_secrets = source.get("CHATWOOT_WEBHOOK_SECRETS", "")
+    webhook_secrets = [item.strip() for item in raw_secrets.split(",") if item.strip()]
+
+    webhook_max_body_bytes = _positive_int(source, "WEBHOOK_MAX_BODY_BYTES", 1_048_576, problems)
+    webhook_tolerance = _positive_int(
+        source, "WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS", 300, problems
+    )
+
     if problems:
         raise ConfigError("Invalid configuration: " + "; ".join(problems))
 
@@ -69,4 +80,24 @@ def load_config(env: Mapping[str, str] | None = None) -> Settings:
         jwt_secret=jwt_secret,
         allowed_origins=origins,
         cookie_secure=source.get("COOKIE_SECURE", "true") == "true",
+        webhook_secrets=webhook_secrets,
+        webhook_max_body_bytes=webhook_max_body_bytes,
+        webhook_timestamp_tolerance_seconds=webhook_tolerance,
     )
+
+
+def _positive_int(
+    source: Mapping[str, str], key: str, default: int, problems: list[str]
+) -> int:
+    raw = source.get(key)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        problems.append(f"{key} must be an integer")
+        return default
+    if value <= 0:
+        problems.append(f"{key} must be positive")
+        return default
+    return value

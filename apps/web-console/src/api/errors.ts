@@ -34,6 +34,7 @@ export const API_ERROR_KINDS = {
   QUOTA_EXCEEDED: 'rate_limited',
   WEBHOOK_SIGNATURE_INVALID: 'webhook',
   WEBHOOK_TIMESTAMP_INVALID: 'webhook',
+  WEBHOOK_PAYLOAD_TOO_LARGE: 'webhook',
   WEBHOOK_DUPLICATE: 'webhook',
   MESSAGE_SELF_LOOP: 'message',
   MESSAGE_ORDERING_DEGRADED: 'message',

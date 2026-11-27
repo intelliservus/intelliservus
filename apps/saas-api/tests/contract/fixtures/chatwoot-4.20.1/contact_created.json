@@ -1,0 +1,27 @@
+{
+  "event": "contact_created",
+  "chatwoot_version": "v4.20.1-ce",
+  "captured_at": "2026-11-25T12-24-31-440Z-001",
+  "source": "spikes/chatwoot-poc/findings/samples/contact_created.json",
+  "derived": false,
+  "payload": {
+    "account": {
+      "id": 1,
+      "name": "POC Workspace"
+    },
+    "additional_attributes": {
+      "company_name": "Poc"
+    },
+    "avatar": "«redacted»",
+    "custom_attributes": {},
+    "email": "«redacted»",
+    "id": 5,
+    "identifier": null,
+    "name": "«redacted»",
+    "phone_number": null,
+    "thumbnail": "«redacted»",
+    "blocked": false,
+    "contact_type": "lead",
+    "event": "contact_created"
+  }
+}
